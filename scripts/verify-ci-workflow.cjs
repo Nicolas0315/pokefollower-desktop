@@ -3,9 +3,13 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 const workflowPath = path.join(root, ".github", "workflows", "ci.yml");
+const releaseMacosWorkflowPath = path.join(root, ".github", "workflows", "release-macos.yml");
+const releaseLinuxWorkflowPath = path.join(root, ".github", "workflows", "release-linux.yml");
 const dependabotPath = path.join(root, ".github", "dependabot.yml");
 const packagePath = path.join(root, "package.json");
 const workflow = fs.readFileSync(workflowPath, "utf8");
+const releaseMacosWorkflow = fs.readFileSync(releaseMacosWorkflowPath, "utf8");
+const releaseLinuxWorkflow = fs.readFileSync(releaseLinuxWorkflowPath, "utf8");
 const dependabot = fs.readFileSync(dependabotPath, "utf8");
 const benchDevRuntime = fs.readFileSync(path.join(root, "scripts", "bench-dev-runtime.cjs"), "utf8");
 const benchLinuxUnpackedRuntime = fs.readFileSync(path.join(root, "scripts", "bench-linux-unpacked-runtime.cjs"), "utf8");
@@ -22,6 +26,10 @@ function expectFile(relativePath) {
   if (!fs.existsSync(path.join(root, relativePath))) errors.push(`required file missing: ${relativePath}`);
 }
 
+function expectWorkflowIncludes(workflowName, text, haystack) {
+  if (!haystack.includes(text)) errors.push(`${workflowName} missing: ${text}`);
+}
+
 function expectDependabotIncludes(label, text) {
   if (!dependabot.includes(text)) errors.push(`dependabot ${label} missing: ${text}`);
 }
@@ -35,6 +43,44 @@ expectIncludes("concurrency", "cancel-in-progress: true");
 expectIncludes("node version", 'NODE_VERSION: "22.12.0"');
 expectIncludes("checkout action", "uses: actions/checkout@v7");
 expectIncludes("setup-node action", "uses: actions/setup-node@v6");
+
+for (const [workflowName, releaseWorkflow, expectedRunner, expectedCommand, expectedAsset] of [
+  [
+    "release-macos workflow",
+    releaseMacosWorkflow,
+    "runs-on: macos-latest",
+    "npm run dist:mac -- --arm64 --publish never",
+    '"release/PokeFollower-${version}-arm64.dmg"',
+  ],
+  [
+    "release-linux workflow",
+    releaseLinuxWorkflow,
+    "runs-on: ubuntu-latest",
+    "npm run dist:linux -- --publish never",
+    '"release/PokeFollower-${version}.AppImage"',
+  ],
+]) {
+  for (const text of [
+    "workflow_dispatch:",
+    "permissions:",
+    "contents: write",
+    "cancel-in-progress: false",
+    'NODE_VERSION: "22.12.0"',
+    "uses: actions/checkout@v7",
+    "ref: ${{ inputs.tag }}",
+    "uses: actions/setup-node@v6",
+    "npm ci",
+    "Check release tag matches package version",
+    expectedRunner,
+    expectedCommand,
+    "node scripts/verify-package-smoke.cjs",
+    "gh release upload",
+    "--clobber",
+    expectedAsset,
+  ]) {
+    expectWorkflowIncludes(workflowName, text, releaseWorkflow);
+  }
+}
 
 expectDependabotIncludes("version", "version: 2");
 expectDependabotIncludes("npm ecosystem", 'package-ecosystem: "npm"');
@@ -189,6 +235,8 @@ for (const text of [
 
 for (const file of [
   ".github/dependabot.yml",
+  ".github/workflows/release-macos.yml",
+  ".github/workflows/release-linux.yml",
   "src/main/frame-routing.js",
   "src/main/fullscreen-policy.js",
   "src/main/sim-loop-config.js",
