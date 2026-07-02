@@ -28,23 +28,11 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
+          cache: npm
 
-      - run: npm run verify:assets
-      - run: npm run verify:ci
-      - run: npm run verify:deps
-      - run: npm run verify:docs
-      - run: npm run verify:electron
-      - run: npm run verify:hygiene
-      - run: npm run verify:installer
-      - run: npm run verify:ipc
-      - run: npm run verify:overlay
-      - run: npm run verify:platform
-      - run: npm run verify:roadmap
-      - run: npm run verify:runtime
-      - run: npm run verify:settings
-      - run: npm run verify:signing
-      - run: npm run verify:wasm
+      - run: npm ci
+      - run: xvfb-run -a bash scripts/verify.sh static
 
   unit-tests:
     name: Unit tests (${{ matrix.os }})
@@ -62,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install Rust stable
@@ -83,7 +71,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install Rust stable with WASM target
@@ -128,7 +116,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci

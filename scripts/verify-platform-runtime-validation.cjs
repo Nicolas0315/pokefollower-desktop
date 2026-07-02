@@ -6,6 +6,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
 const status = fs.readFileSync(path.join(root, "docs", "STATUS.md"), "utf8");
 const validation = fs.readFileSync(path.join(root, "docs", "platform-runtime-validation.md"), "utf8");
+const verifyShell = fs.readFileSync(path.join(root, "scripts", "verify.sh"), "utf8");
 const errors = [];
 
 function expect(condition, message) {
@@ -18,7 +19,7 @@ function expectIncludesAll(text, snippets, message) {
 }
 
 expect(pkg.scripts?.["verify:runtime-validation"] === "node scripts/verify-platform-runtime-validation.cjs", "package.json must expose verify:runtime-validation");
-expect(pkg.scripts?.["verify:local"]?.includes("npm run verify:runtime-validation"), "verify:local must include runtime validation docs guard");
+expect(verifyShell.includes("npm run verify:runtime-validation"), "scripts/verify.sh static_gates must include runtime validation docs guard");
 expect(pkg.scripts?.["evidence:mac-gui"] === "node scripts/capture-mac-gui-evidence.cjs", "package.json must expose evidence:mac-gui");
 expect(pkg.scripts?.["evidence:linux-gui"] === "node scripts/capture-linux-gui-evidence.cjs", "package.json must expose evidence:linux-gui");
 

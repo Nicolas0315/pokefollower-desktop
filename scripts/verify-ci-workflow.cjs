@@ -7,10 +7,15 @@ const dependabotPath = path.join(root, ".github", "dependabot.yml");
 const packagePath = path.join(root, "package.json");
 const workflow = fs.readFileSync(workflowPath, "utf8");
 const dependabot = fs.readFileSync(dependabotPath, "utf8");
+const verifyShell = fs.readFileSync(path.join(root, "scripts", "verify.sh"), "utf8");
 const benchDevRuntime = fs.readFileSync(path.join(root, "scripts", "bench-dev-runtime.cjs"), "utf8");
 const benchLinuxUnpackedRuntime = fs.readFileSync(path.join(root, "scripts", "bench-linux-unpacked-runtime.cjs"), "utf8");
 const benchMacUnpackedRuntime = fs.readFileSync(path.join(root, "scripts", "bench-mac-unpacked-runtime.cjs"), "utf8");
 const benchWinUnpackedRuntime = fs.readFileSync(path.join(root, "scripts", "bench-win-unpacked-runtime.cjs"), "utf8");
+const notificationOverlayVerifier = fs.readFileSync(
+  path.join(root, "scripts", "verify-notification-overlay-render.cjs"),
+  "utf8",
+);
 const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 const errors = [];
 
@@ -26,6 +31,24 @@ function expectDependabotIncludes(label, text) {
   if (!dependabot.includes(text)) errors.push(`dependabot ${label} missing: ${text}`);
 }
 
+function expectVerifyShellIncludes(label, text) {
+  if (!verifyShell.includes(text)) errors.push(`verify.sh ${label} missing: ${text}`);
+}
+
+function extractJobBlock(jobName, nextJobName) {
+  const start = workflow.indexOf(`  ${jobName}:\n`);
+  if (start < 0) return "";
+  const end = workflow.indexOf(`  ${nextJobName}:\n`, start);
+  return end < 0 ? workflow.slice(start) : workflow.slice(start, end);
+}
+
+function extractShellFunctionBody(source, functionName) {
+  const start = source.indexOf(`${functionName}() {\n`);
+  if (start < 0) return "";
+  const end = source.indexOf("\n}", start);
+  return end < 0 ? source.slice(start) : source.slice(start, end);
+}
+
 for (const trigger of ["pull_request:", "push:", "workflow_dispatch:"]) {
   expectIncludes("workflow trigger", trigger);
 }
@@ -33,6 +56,7 @@ for (const trigger of ["pull_request:", "push:", "workflow_dispatch:"]) {
 expectIncludes("minimum permissions", "contents: read");
 expectIncludes("concurrency", "cancel-in-progress: true");
 expectIncludes("node version", 'NODE_VERSION: "22.12.0"');
+expectIncludes("node version file", "node-version-file: .nvmrc");
 expectIncludes("checkout action", "uses: actions/checkout@v7");
 expectIncludes("setup-node action", "uses: actions/setup-node@v6");
 
@@ -47,6 +71,19 @@ for (const job of ["static-checks:", "unit-tests:", "rust-wasm-artifact:", "pack
 }
 
 for (const command of [
+  "bash scripts/verify.sh static",
+  "npm ci",
+  "npm test",
+  "npm run test:rust",
+  "cargo fmt --manifest-path crates/follower_core/Cargo.toml --check",
+  "npm run build:rust",
+  "git diff --exit-code -- native/pokefollower_core.wasm",
+  "node scripts/verify-package-smoke.cjs ${{ matrix.platform }} ${{ matrix.arch }}",
+]) {
+  expectIncludes("required workflow command", command);
+}
+
+for (const command of [
   "npm run verify:assets",
   "npm run verify:ci",
   "npm run verify:deps",
@@ -55,21 +92,64 @@ for (const command of [
   "npm run verify:hygiene",
   "npm run verify:installer",
   "npm run verify:ipc",
+  "npm run verify:notification",
   "npm run verify:overlay",
   "npm run verify:platform",
+  "npm run verify:runtime-validation",
   "npm run verify:roadmap",
   "npm run verify:runtime",
+  "npm run verify:search-metadata",
   "npm run verify:settings",
   "npm run verify:signing",
   "npm run verify:wasm",
-  "npm test",
-  "npm run test:rust",
-  "cargo fmt --manifest-path crates/follower_core/Cargo.toml --check",
-  "npm run build:rust",
-  "git diff --exit-code -- native/pokefollower_core.wasm",
-  "node scripts/verify-package-smoke.cjs ${{ matrix.platform }} ${{ matrix.arch }}",
 ]) {
-  expectIncludes("required command", command);
+  expectVerifyShellIncludes("static gate", command);
+}
+
+{
+  const staticGatesBody = extractShellFunctionBody(verifyShell, "static_gates");
+  if (!staticGatesBody) {
+    errors.push("verify.sh static_gates function not found");
+  } else {
+    const requireIndex = staticGatesBody.indexOf("require_electron_dependency");
+    const firstGateIndex = staticGatesBody.indexOf("run npm run verify:");
+    if (requireIndex < 0 || firstGateIndex < 0 || requireIndex > firstGateIndex) {
+      errors.push(
+        "verify.sh static_gates must call require_electron_dependency before running any verify:* gate (verify:notification requires the electron devDependency)",
+      );
+    }
+  }
+}
+
+{
+  const requireElectronBody = extractShellFunctionBody(verifyShell, "require_electron_dependency");
+  if (!requireElectronBody) {
+    errors.push("verify.sh require_electron_dependency function not found");
+  } else if (!requireElectronBody.includes("require.resolve('electron')")) {
+    errors.push(
+      "verify.sh require_electron_dependency must resolve the electron module itself, not just check node_modules directory presence (a partial install can have node_modules without electron)",
+    );
+  }
+}
+
+{
+  const staticChecksJob = extractJobBlock("static-checks", "unit-tests");
+  if (!staticChecksJob) {
+    errors.push("static-checks job block not found in ci.yml");
+  } else {
+    const ciIndex = staticChecksJob.indexOf("npm ci");
+    const verifyIndex = staticChecksJob.indexOf("bash scripts/verify.sh static");
+    if (ciIndex < 0 || verifyIndex < 0 || ciIndex > verifyIndex) {
+      errors.push(
+        "static-checks job must run npm ci before bash scripts/verify.sh static (verify:notification requires the electron devDependency)",
+      );
+    }
+    if (!staticChecksJob.includes("xvfb-run") || staticChecksJob.indexOf("xvfb-run") > verifyIndex) {
+      errors.push(
+        "static-checks job must run bash scripts/verify.sh static under xvfb-run (verify:notification opens an Electron BrowserWindow on headless ubuntu-latest)",
+      );
+    }
+  }
 }
 
 for (const os of ["ubuntu-latest", "windows-latest", "macos-latest"]) {
@@ -89,32 +169,11 @@ for (const smoke of [
   expectIncludes("package smoke matrix", smoke);
 }
 
-if (!pkg.scripts || !pkg.scripts["verify:local"]) {
-  errors.push("package.json verify:local script is missing");
-} else {
-  for (const command of [
-    "npm run verify:assets",
-    "npm run verify:ci",
-    "npm run verify:deps",
-    "npm run verify:docs",
-    "npm run verify:electron",
-    "npm run verify:hygiene",
-    "npm run verify:installer",
-    "npm run verify:ipc",
-    "npm run verify:notification",
-    "npm run verify:overlay",
-    "npm run verify:platform",
-    "npm run verify:roadmap",
-    "npm run verify:runtime",
-    "npm run verify:settings",
-    "npm run verify:signing",
-    "npm run verify:wasm",
-    "npm test",
-  ]) {
-    if (!pkg.scripts["verify:local"].includes(command)) {
-      errors.push(`package.json verify:local must include ${command}`);
-    }
-  }
+if (pkg.scripts?.verify !== "bash scripts/verify.sh local") {
+  errors.push("package.json verify script must call bash scripts/verify.sh local");
+}
+if (pkg.scripts?.["verify:local"] !== "bash scripts/verify.sh local") {
+  errors.push("package.json verify:local script must call bash scripts/verify.sh local");
 }
 
 for (const [scriptName, scriptCommand] of [
@@ -187,6 +246,18 @@ for (const text of [
 ]) {
   if (!benchWinUnpackedRuntime.includes(text)) {
     errors.push(`bench-win-unpacked-runtime must keep isolated packaged runtime measurement support: ${text}`);
+  }
+}
+
+for (const text of [
+  "POKEFOLLOWER_VERIFY_NOTIFICATION_ELECTRON",
+  "[electronEntryEnv]: \"1\"",
+  "process.env[electronEntryEnv] === \"1\"",
+  "delete childEnv.ELECTRON_RUN_AS_NODE",
+  "__POKEFOLLOWER_ELECTRON_API__",
+]) {
+  if (!notificationOverlayVerifier.includes(text)) {
+    errors.push(`verify-notification-overlay-render must prevent recursive Electron spawn: ${text}`);
   }
 }
 

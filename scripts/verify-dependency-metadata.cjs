@@ -5,6 +5,7 @@ const root = path.join(__dirname, "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
+const nvmrc = fs.readFileSync(path.join(root, ".nvmrc"), "utf8").trim();
 const errors = [];
 
 function expect(condition, message) {
@@ -33,6 +34,8 @@ for (const [section, names] of [
 
 expect(pkg.engines?.node === ">=22.12.0", "package.json engines.node must remain >=22.12.0");
 expect(workflow.includes('NODE_VERSION: "22.12.0"'), "CI NODE_VERSION must remain 22.12.0");
+expect(nvmrc === "22.12.0", ".nvmrc must pin Node 22.12.0");
+expect(workflow.includes("node-version-file: .nvmrc"), "CI must read Node version from .nvmrc");
 expect(lock.lockfileVersion === 3, "package-lock lockfileVersion must remain 3");
 expect(lock.packages?.["node_modules/electron"]?.version === "42.4.1", "locked electron version must remain 42.4.1");
 expect(lock.packages?.["node_modules/electron-builder"]?.version === "26.15.3", "locked electron-builder version must remain 26.15.3");

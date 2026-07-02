@@ -25,6 +25,7 @@ const metadata = readJson(metadataPath);
 const index = readJson(indexPath);
 const docs = fs.readFileSync(docsPath, "utf8");
 const pkg = readJson(pkgPath);
+const verifyShell = fs.readFileSync(path.join(root, "scripts", "verify.sh"), "utf8");
 const packIds = new Set((index.retro || []).map((entry) => entry.id));
 const entries = metadata.entries || {};
 
@@ -100,8 +101,8 @@ if (!docs.includes("映画・アニメタグ")) fail("docs/search-metadata.md mu
 if (pkg.scripts?.["verify:search-metadata"] !== "node scripts/verify-search-metadata.cjs") {
   fail("package.json must expose verify:search-metadata");
 }
-if (!pkg.scripts?.["verify:local"]?.includes("npm run verify:search-metadata")) {
-  fail("verify:local must include verify:search-metadata");
+if (!verifyShell.includes("npm run verify:search-metadata")) {
+  fail("scripts/verify.sh static_gates must include verify:search-metadata");
 }
 
 if (errors.length > 0) {

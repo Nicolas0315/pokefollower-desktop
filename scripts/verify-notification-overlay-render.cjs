@@ -4,13 +4,15 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
+const electronEntryEnv = "POKEFOLLOWER_VERIFY_NOTIFICATION_ELECTRON";
 
 function fail(message) {
   throw new Error(message);
 }
 
 async function runElectronMain() {
-  const { app, BrowserWindow } = require("electron");
+  const { app, BrowserWindow } = global.__POKEFOLLOWER_ELECTRON_API__ || require("electron");
+  if (!app || !BrowserWindow) fail("Electron main-process API is unavailable");
   await app.whenReady();
   const win = new BrowserWindow({
     width: 360,
@@ -117,19 +119,31 @@ async function runElectronMain() {
   app.quit();
 }
 
-if (process.versions.electron && process.type === "browser") {
+if (process.versions.electron && process.env[electronEntryEnv] === "1") {
   runElectronMain().catch((error) => {
     console.error(`[verify-notification-overlay-render] ${error.stack || error.message}`);
     process.exitCode = 1;
-    const { app } = require("electron");
-    app.quit();
+    const { app } = global.__POKEFOLLOWER_ELECTRON_API__ || {};
+    if (app) app.quit();
   });
 } else {
   const electron = require("electron");
-  const result = spawnSync(electron, [__filename], {
-    cwd: root,
-    env: { ...process.env },
-    stdio: "inherit",
-  });
-  process.exit(result.status ?? 1);
+  const tempAppDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokefollower-notification-electron-"));
+  try {
+    fs.writeFileSync(path.join(tempAppDir, "package.json"), JSON.stringify({ main: "main.cjs" }));
+    fs.writeFileSync(
+      path.join(tempAppDir, "main.cjs"),
+      `global.__POKEFOLLOWER_ELECTRON_API__ = require("electron");\nrequire(${JSON.stringify(__filename)});\n`,
+    );
+    const childEnv = { ...process.env, [electronEntryEnv]: "1" };
+    delete childEnv.ELECTRON_RUN_AS_NODE;
+    const result = spawnSync(electron, [tempAppDir], {
+      cwd: root,
+      env: childEnv,
+      stdio: "inherit",
+    });
+    process.exit(result.status ?? 1);
+  } finally {
+    fs.rmSync(tempAppDir, { recursive: true, force: true });
+  }
 }
