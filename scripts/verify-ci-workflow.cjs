@@ -42,7 +42,7 @@ expectDependabotIncludes("actions ecosystem", 'package-ecosystem: "github-action
 expectDependabotIncludes("root directory", 'directory: "/"');
 expectDependabotIncludes("weekly schedule", 'interval: "weekly"');
 
-for (const job of ["static-checks:", "unit-tests:", "rust-wasm-artifact:", "package-smoke:"]) {
+for (const job of ["static-checks:", "unit-tests:", "ui-render:", "rust-wasm-artifact:", "package-smoke:"]) {
   expectIncludes("required job", job);
 }
 
@@ -64,6 +64,12 @@ for (const command of [
   "npm run verify:wasm",
   "npm test",
   "npm run test:rust",
+  // 実描画 gate（ui-render job）。Linux は xvfb 必須なので分岐ごと固定する。
+  "xvfb-run -a npm run verify:notification",
+  "xvfb-run -a npm run verify:overlay-render",
+  "xvfb-run -a npm run verify:settings-render",
+  "npm run verify:overlay-render",
+  "npm run verify:settings-render",
   "cargo fmt --manifest-path crates/follower_core/Cargo.toml --check",
   "npm run build:rust",
   "git diff --exit-code -- native/pokefollower_core.wasm",
@@ -103,6 +109,8 @@ if (!pkg.scripts || !pkg.scripts["verify:local"]) {
     "npm run verify:ipc",
     "npm run verify:notification",
     "npm run verify:overlay",
+    "npm run verify:overlay-render",
+    "npm run verify:settings-render",
     "npm run verify:platform",
     "npm run verify:roadmap",
     "npm run verify:runtime",
@@ -212,6 +220,8 @@ for (const file of [
   "scripts/verify-ipc-routing.cjs",
   "scripts/verify-notification-overlay-render.cjs",
   "scripts/verify-overlay-cache.cjs",
+  "scripts/verify-overlay-sprite-render.cjs",
+  "scripts/verify-settings-ui-render.cjs",
   "scripts/verify-roadmap-issues.cjs",
   "scripts/verify-runtime-guards.cjs",
   "scripts/verify-settings-ui.cjs",

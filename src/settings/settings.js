@@ -654,6 +654,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   buildGrid();
   renderChips();
   renderTypeChips();
+  // 初期描画も選択中の kind/世代/タイプを反映させる。これが無いと kind="通常" のまま
+  // 地方フォルムのタイルが出たままになり、検索欄やチップに触れた瞬間に消える。
+  applyFilter();
 
   if (searchEl) searchEl.addEventListener("input", applyFilter);
   if (kindEl) {
