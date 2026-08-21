@@ -461,7 +461,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const searchMetadata = await window.settingsApi.getSearchMetadata();
   const searchEngine = window.PokeFollowerSearch;
-  const searchIndex = searchEngine ? searchEngine.buildPokemonSearchIndex(packs, searchMetadata) : [];
+  // genOfDex を渡すと、search-metadata.json に未登録の pack も世代 facet で引ける。
+  const searchIndex = searchEngine ? searchEngine.buildPokemonSearchIndex(packs, searchMetadata, { genOfDex }) : [];
 
   let selectedKind = "normal";
   let selectedGen = "all";

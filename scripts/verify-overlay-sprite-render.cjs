@@ -127,7 +127,7 @@ async function runElectronMain() {
   }
 
   const checks = [];
-  const record = (name) => checks.push(name);
+  const record = (name) => { checks.push(name); console.log(`  ok  ${name}`); };
 
   // ── 1. meta 受信でシート URL が app:// 経由で解決される ─────
   sendMeta(meta);
@@ -239,6 +239,113 @@ async function runElectronMain() {
     );
     expectTrue(win.isTransparent?.() !== false, "透過: ウィンドウが transparent で作られている");
     record("透過ウィンドウ");
+  }
+
+  // ── 6. 同一フレーム再送でスタイルを書き直さない（キャッシュ） ──
+  {
+    const frame = { visible: true, state: "idle", frame: 2, row: 1, x: 200, y: 150, scale: 1 };
+    await sendFrame(frame);
+    // style 属性の変更回数を数える
+    await evalPage(`(() => {
+      window.__pfStyleWrites = 0;
+      const el = document.getElementById("__pf_follower");
+      window.__pfObserver = new MutationObserver((records) => { window.__pfStyleWrites += records.length; });
+      window.__pfObserver.observe(el, { attributes: true, attributeFilter: ["style"] });
+      return true;
+    })()`);
+    for (let i = 0; i < 5; i += 1) await sendFrame(frame);
+    const sameFrameWrites = await evalPage(`window.__pfStyleWrites`);
+    expectEqual(sameFrameWrites, 0, `キャッシュ: 同一フレーム5回再送で style 書き込みが発生しない (got ${sameFrameWrites})`);
+
+    await sendFrame({ ...frame, frame: 3 });
+    const changedWrites = await evalPage(`window.__pfStyleWrites`);
+    expectTrue(changedWrites > 0, "キャッシュ: コマが変わったら style は書き込まれる");
+    await evalPage(`(() => { window.__pfObserver.disconnect(); return true; })()`);
+    record(`スタイル書き込みキャッシュ（同一5回=0書込 / 変化時=${changedWrites}書込）`);
+  }
+
+  // ── 7. meta 差し替えでシートとキャッシュが入れ替わる ──────────
+  {
+    const otherKey = process.env.PF_OVERLAY_PACK_ALT || "retro/gen-1/009-blastoise";
+    const { meta: otherMeta } = packReader.readPackMeta(otherKey);
+    expectTrue(otherMeta.rawPath !== meta.rawPath, "meta差替: 別パックの rawPath が違うこと（前提）");
+    sendMeta(otherMeta);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await sendFrame({ visible: true, state: "idle", frame: 0, row: 0, x: 240, y: 180, scale: 1 });
+    const el = await readFollower();
+    expectTrue(
+      el.backgroundImage.includes(otherMeta.rawPath),
+      `meta差替: 新しいパックのシートを指す (${el.backgroundImage})`,
+    );
+    expectTrue(
+      !el.backgroundImage.includes(meta.rawPath),
+      `meta差替: 旧パックのシートURLが残らない (${el.backgroundImage})`,
+    );
+    expectEqual(el.width, `${otherMeta.states.idle.frame.w}px`, "meta差替: 新しいパックの frame.w が反映される");
+    expectEqual(
+      el.backgroundSize,
+      `${otherMeta.states.idle.frames * otherMeta.states.idle.frame.w}px ${Object.keys(otherMeta.states.idle.rows).length * otherMeta.states.idle.frame.h}px`,
+      "meta差替: background-size が新シートの自然サイズへ更新される（キャッシュが残っていない）",
+    );
+    record(`meta差替 ${PACK_KEY} → ${otherKey}`);
+    // 以降の通知検証のため元のパックへ戻す
+    sendMeta(meta);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  // ── 8. 通知バリアント（title/body 欠落・TTL・再発行） ─────────
+  {
+    const readNotification = () => evalPage(`(() => {
+      const el = document.getElementById("__pf_notification");
+      if (!el) return { exists: false };
+      const [source, title, body] = el.children;
+      return {
+        exists: true,
+        display: el.style.display,
+        sourceText: source.textContent,
+        titleText: title.textContent,
+        bodyText: body.textContent,
+        titleDisplay: title.style.display,
+        bodyDisplay: body.style.display,
+      };
+    })()`);
+
+    win.webContents.send("companion-notification", { source: "Codex", title: "タイトルのみ", ttlMs: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const titleOnly = await readNotification();
+    expectEqual(titleOnly.display, "block", "通知: タイトルのみで表示される");
+    expectEqual(titleOnly.titleDisplay, "block", "通知: タイトルが可視");
+    expectEqual(titleOnly.bodyDisplay, "none", "通知: 本文が無いときは本文行を隠す");
+
+    win.webContents.send("companion-notification", { source: "Codex", body: "本文のみ", ttlMs: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const bodyOnly = await readNotification();
+    expectEqual(bodyOnly.titleDisplay, "none", "通知: タイトルが無いときはタイトル行を隠す");
+    expectEqual(bodyOnly.bodyDisplay, "block", "通知: 本文が可視");
+    expectEqual(bodyOnly.bodyText, "本文のみ", "通知: 再発行で内容が差し替わる");
+
+    win.webContents.send("companion-notification", { source: "既定", title: "既定ソース", ttlMs: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    win.webContents.send("companion-notification", { title: "ソース無し", ttlMs: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expectEqual((await readNotification()).sourceText, "通知", "通知: source 未指定なら「通知」にフォールバック");
+
+    // TTL で自動的に隠れる
+    win.webContents.send("companion-notification", { source: "Codex", title: "短命", ttlMs: 300 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expectEqual((await readNotification()).display, "block", "通知TTL: 期限内は表示");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expectEqual((await readNotification()).display, "none", "通知TTL: 期限切れで自動的に隠れる");
+
+    // 再発行で TTL タイマーがリセットされる（前回の短い TTL に引きずられない）
+    win.webContents.send("companion-notification", { source: "Codex", title: "TTL短い", ttlMs: 400 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    win.webContents.send("companion-notification", { source: "Codex", title: "TTL長い", ttlMs: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const afterReissue = await readNotification();
+    expectEqual(afterReissue.display, "block", "通知TTL: 再発行でタイマーがリセットされ消えない");
+    expectEqual(afterReissue.titleText, "TTL長い", "通知TTL: 再発行後の内容が出ている");
+    record("通知バリアント title/body欠落・source既定・TTL自動非表示・再発行リセット");
   }
 
   expectEqual(consoleErrors.length, 0, `renderer console error: ${JSON.stringify(consoleErrors.slice(0, 3))}`);

@@ -125,6 +125,19 @@ if (!pkg.scripts || !pkg.scripts["verify:local"]) {
   }
 }
 
+// リリース経路: macOS 配布物は署名/起動/Gatekeeper まで検証してからアップロードする。
+// AGENTS.md の Release Safety（未署名パッケージは publish 無効）も両方の面で守る。
+const releaseMacWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "release-macos.yml"), "utf8");
+for (const text of ["npm run verify:mac-dist", "node scripts/verify-package-smoke.cjs darwin arm64", "--publish never", "mac-fix.command"]) {
+  if (!releaseMacWorkflow.includes(text)) errors.push(`release-macos workflow missing: ${text}`);
+}
+for (const script of ["dist", "dist:win", "dist:mac", "dist:linux"]) {
+  const command = pkg.scripts?.[script] || "";
+  if (!/--publish[ =]never/.test(command)) {
+    errors.push(`package.json ${script} must keep publish disabled with --publish never (AGENTS.md Release Safety)`);
+  }
+}
+
 for (const [scriptName, scriptCommand] of [
   ["bench:dev-runtime", "node scripts/bench-dev-runtime.cjs"],
   ["bench:linux-unpacked-runtime", "node scripts/bench-linux-unpacked-runtime.cjs"],
@@ -222,6 +235,8 @@ for (const file of [
   "scripts/verify-overlay-cache.cjs",
   "scripts/verify-overlay-sprite-render.cjs",
   "scripts/verify-settings-ui-render.cjs",
+  "scripts/verify-mac-distribution.cjs",
+  "mac-fix.command",
   "scripts/verify-roadmap-issues.cjs",
   "scripts/verify-runtime-guards.cjs",
   "scripts/verify-settings-ui.cjs",
