@@ -54,7 +54,8 @@
     "dist:mac:signed": "electron-builder --mac --config electron-builder.signed.cjs",
     "dist:linux": "electron-builder --linux --publish never",
     "gen:build": "node scripts/gen-build.mjs",
-    "build:index": "node scripts/build-index.mjs"
+    "build:index": "node scripts/build-index.mjs",
+    "verify:win-dist": "node scripts/verify-win-distribution.cjs"
   },
   "devDependencies": {
     "electron": "^42.4.1",
