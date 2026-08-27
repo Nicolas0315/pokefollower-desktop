@@ -132,6 +132,10 @@ jobs:
       - run: npm ci
       - run: cargo fmt --manifest-path crates/follower_core/Cargo.toml --check
       - run: npm run build:rust
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-rust-wasm
+          path: native/pokefollower_core.wasm
       - name: Verify committed WASM is current
         run: git diff --exit-code -- native/pokefollower_core.wasm
 

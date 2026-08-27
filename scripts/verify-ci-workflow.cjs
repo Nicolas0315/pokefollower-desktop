@@ -72,6 +72,7 @@ for (const command of [
   "npm run verify:settings-render",
   "cargo fmt --manifest-path crates/follower_core/Cargo.toml --check",
   "npm run build:rust",
+  "name: windows-rust-wasm",
   "git diff --exit-code -- native/pokefollower_core.wasm",
   "node scripts/verify-package-smoke.cjs ${{ matrix.platform }} ${{ matrix.arch }}",
 ]) {
