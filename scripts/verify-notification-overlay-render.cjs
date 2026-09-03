@@ -120,9 +120,9 @@ async function runElectronMain() {
 if (process.versions.electron && process.type === "browser") {
   runElectronMain().catch((error) => {
     console.error(`[verify-notification-overlay-render] ${error.stack || error.message}`);
-    process.exitCode = 1;
+    // app.quit() は Windows で process.exitCode を無視し exit 0 になる（実測）。
     const { app } = require("electron");
-    app.quit();
+    app.exit(1);
   });
 } else {
   const electron = require("electron");

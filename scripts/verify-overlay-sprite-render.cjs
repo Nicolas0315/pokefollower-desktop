@@ -361,8 +361,8 @@ if (process.versions.electron && process.type === "browser") {
   const { app } = require("electron");
   runElectronMain().catch((error) => {
     console.error(`[verify-overlay-sprite-render] ${error.stack || error.message}`);
-    process.exitCode = 1;
-    app.quit();
+    // app.quit() は Windows で process.exitCode を無視し exit 0 になる（実測）。
+    app.exit(1);
   });
 } else {
   const electron = require("electron");
