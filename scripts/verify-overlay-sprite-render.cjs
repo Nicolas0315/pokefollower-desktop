@@ -366,7 +366,7 @@ if (process.versions.electron && process.type === "browser") {
   });
 } else {
   const electron = require("electron");
-  const result = spawnSync(electron, [__filename, ...(process.platform === "linux" ? ["--no-sandbox"] : [])], {
+  const result = spawnSync(electron, [__filename, ...(process.platform === "linux" ? ["--no-sandbox", "--disable-gpu"] : [])], {
     cwd: root,
     env: { ...process.env },
     stdio: "inherit",
