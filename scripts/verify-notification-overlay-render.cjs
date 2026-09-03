@@ -15,6 +15,9 @@ async function runElectronMain() {
   const win = new BrowserWindow({
     width: 360,
     height: 240,
+    // width/height は枠込み。Linux では内容高が 213px になり bottomMargin 分岐が変わるため
+    // 内容サイズで固定して全OSで同じビューポートにする。
+    useContentSize: true,
     show: false,
     backgroundColor: "#ffffff",
     webPreferences: {
