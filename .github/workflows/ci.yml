@@ -65,10 +65,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install Rust stable
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      # rust-toolchain.toml で固定したバージョンを使う（WASM 成果物の再現性のため）。
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
 
       - run: npm ci
       - run: npm test
@@ -122,10 +121,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install Rust stable with WASM target
+      # stable が動くと同じソースでも WASM のバイト列が変わるため、
+      # rust-toolchain.toml で固定したバージョンだけを使う。
+      - name: Install pinned Rust toolchain with WASM target
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup show active-toolchain || rustup toolchain install
           rustup component add rustfmt
           rustup target add wasm32-unknown-unknown
 
